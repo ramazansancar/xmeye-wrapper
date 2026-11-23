@@ -30,12 +30,18 @@ Tarayıcı  ──HLS──►  Köprü sunucu  ──bulut relay──►  Xion
 Erken geliştirme. Çalışan parçalar:
 
 - `core-go/dvrip` — DVRIP (Sofia) protokol çekirdeği: paket codec, Sofia parola hash, komutlar (testli).
-- `core-go/transport` — HLS proxy (relay `.ts` segmentlerini tarayıcıya HLS olarak sunar).
-- `core-go/server` — HTTP köprü sunucu + çok kanal web arayüzü (hls.js).
-- `core-go/cmd/pcapanalyze` — protokol analiz aracı (geliştirme).
+- `core-go/transport` — HLS/MSE proxy (relay segmentlerini tarayıcıya sunar).
+- `core-go/server` — HTTP köprü sunucu + **NVR-düzeni web arayüzü** (büyük ekran + PTZ/kalite/playback kontrolcü + galeri şeridi + düzen grid).
+- `core-go/cmd/pcapanalyze`, `cmd/body1412`, `cmd/xmframe` — protokol analiz araçları.
 
-Protokol: cihaz video'yu iki yoldan sunar — HTTP/`.ts` (HLS) ve ham DVRIP. Köprü HTTP/`.ts` yolunu
-hedefler (en basit). Bulut login/token akışı devam ediyor.
+**Protokol durumu (detay: [docs/protokol-spec.md](docs/protokol-spec.md)):**
+
+- **6611 DVRIP yolu tamamen çözüldü, şifresiz.** Login, video başlatma (OPMonitor), playback (OPPlayBack) düz JSON;
+  video (msgID 1412/1422) düz H.264. Cihazın login yanıtı `DataUseAES:false` — video AES yok (kesin).
+- Video frame'leri XM frame header'lı (`00 00 01 FC/FD/FA`), header strip edilerek H.264 elde edilir.
+- 8088 HTTP/`.ts` yolu alternatif (şifresiz MPEG-TS) ama tutarsız tetikleniyor; ana yol 6611.
+- **Açık tek iş:** RPS relay token (seri no → relay) `8186` portunda TLS şifreli signaling'den geliyor — otomasyonun
+  son parçası. Ayrıca H.264 decode için SPS/PPS çözümü. Bunlar çözülünce köprü seri+kullanıcı+şifre ile tam otomatik akıtır.
 
 ## Hızlı başlangıç (geliştirici)
 
@@ -77,4 +83,14 @@ ve portunu halka açmak yerine, yayını bu köprü üzerinden salt-okunur dağ�
 
 ## Lisans
 
-Belirlenecek (açık kaynak, ticari olmayan düşünülüyor).
+**[PolyForm Noncommercial License 1.0.0](LICENSE)** — ticari olmayan kullanım serbesttir.
+
+- Köy, dernek, kurum, kişisel ve diğer **ticari olmayan** amaçlarla serbestçe kullanılabilir, değiştirilebilir, dağıtılabilir.
+- **Ticari kullanım yasaktır.** Ticari kullanım için ayrı izin/iletişim gerekir.
+- Ayrıntı: [LICENSE](LICENSE) dosyası ve <https://polyformproject.org/licenses/noncommercial/1.0.0>.
+
+### Üçüncü taraf atıfları
+
+Cloud/NAT protokol implementasyonu, aşağıdaki MIT lisanslı çalışmadan uyarlanmıştır (çevrim sırasında eklenecek):
+
+- `irlanfazryana23/cctv-backup` (MIT) — XMEye cloud NAT traversal + DVRIP istemci referansı.
