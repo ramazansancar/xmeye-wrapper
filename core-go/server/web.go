@@ -14,6 +14,7 @@ const playerHTML = `<!doctype html>
 <title>Kamera Izleme</title>
 <style>
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%}
 body{background:#eceef0;color:#14181c;font:14px system-ui,Segoe UI,Roboto,Arial,sans-serif;
   height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -27,13 +28,21 @@ header .meta{color:#5a636c;font-size:12px}
 /* orta: ana ekran + sag panel */
 .mid{flex:1 1 auto;display:flex;min-height:0}
 .stage{flex:1 1 auto;position:relative;background:#000;min-width:0;min-height:0}
-.stage video{width:100%;height:100%;object-fit:contain;background:#000;display:block}
+.stage>video,.stage>canvas.main{width:100%;height:100%;object-fit:contain;background:#000;display:block}
 .stage .bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
   padding:4px 8px;background:#fff;border-bottom:1px solid #b4bbc1;font-size:13px}
 .stage .bar .n{font-weight:600}
 .stage .bar .s{color:#5a636c}
 .stage .bar .s.err{color:#b00020}
 .stage .bar .s.live{color:#0a7d2c}
+/* yukleme gostergesi (video gelene kadar). Tek dis-cizgi spinner (hafif donus). */
+.load{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;color:#cfd4d9;background:#000;font-size:13px;z-index:2}
+.load.err{color:#e57373}
+.load .sp{width:34px;height:34px;border:3px solid #3a4046;border-top-color:#cfd4d9;border-radius:50%;
+  animation:spin 0.8s linear infinite}
+.load.err .sp{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* sag kontrolcu */
 .ctrl{flex:0 0 190px;background:#f6f7f8;border-left:1px solid #b4bbc1;
@@ -71,12 +80,11 @@ header .meta{color:#5a636c;font-size:12px}
 .go{font:13px system-ui;padding:5px 12px;background:#fff;color:#14181c;border:1px solid #b4bbc1;cursor:pointer}
 
 /* grid modu: stage icinde cok kamera */
-.stage #main{display:block}
-.stage.grid #main{display:none}
+.stage.grid>video,.stage.grid>canvas.main,.stage.grid>#mainLoad{display:none!important}
 .stage .gwrap{display:none;position:absolute;inset:26px 0 0 0}
 .stage.grid .gwrap{display:grid;gap:3px;padding:3px}
 .stage .gwrap .gc{position:relative;background:#000;border:1px solid #2a2f35;min-height:0;overflow:hidden}
-.stage .gwrap .gc video{width:100%;height:100%;object-fit:contain;background:#000}
+.stage .gwrap .gc video,.stage .gwrap .gc canvas{width:100%;height:100%;object-fit:contain;background:#000;display:block}
 .stage .gwrap .gc .gl{position:absolute;top:0;left:0;padding:0 4px;font-size:11px;
   background:rgba(255,255,255,.85);color:#14181c}
 
@@ -128,6 +136,7 @@ header .meta{color:#5a636c;font-size:12px}
   <div class="stage" id="stage">
     <video id="main" muted playsinline autoplay></video>
     <div class="gwrap" id="gwrap"></div>
+    <div class="load" id="mainLoad"><div class="sp"></div><span id="mainLoadTxt">Bağlanıyor…</span></div>
     <div class="bar"><span class="n" id="mainName">—</span><span class="s" id="mainState">—</span></div>
   </div>
 
@@ -451,6 +460,12 @@ function startThumb(ch){
   // Tek-WS bağlantı havuzu gelince açılacak. Şimdilik sadece ana ekran oynar.
 }
 
+function setLoad(show,err,txt){
+  var l=document.getElementById('mainLoad'); if(!l) return;
+  l.hidden=!show;
+  l.className='load'+(err?' err':'');
+  var t=document.getElementById('mainLoadTxt'); if(t&&txt) t.textContent=txt;
+}
 function setActive(ch){
   active=ch;
   var th=document.querySelectorAll('.thumb');
@@ -458,10 +473,11 @@ function setActive(ch){
   document.getElementById('mainName').textContent='CAM'+String(ch+1).padStart(2,'0');
   var mv=document.getElementById('main'), st=document.getElementById('mainState');
   st.className='s'; st.textContent='baglaniyor';
+  setLoad(true,false,'Bağlanıyor…');
   if(mainHls){ try{mainHls.destroy();}catch(e){} }
   mainHls=attachVideo(mv,ch,stream,
-    function(){ st.className='s live'; st.textContent='canli'; },
-    function(){ st.className='s err'; st.textContent='hata'; });
+    function(){ st.className='s live'; st.textContent='canli'; setLoad(false); },
+    function(){ st.className='s err'; st.textContent='hata'; setLoad(true,true,'Bağlantı hatası — yeniden deneniyor…'); });
 }
 
 // --- kontrolcu ---
