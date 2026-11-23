@@ -8,7 +8,32 @@ Sadece bulut **seri no + kullanıcı/şifre** ile çalışır — yerel ağ (LAN
 
 **Diller / Languages:** [Türkçe kurulum](docs/kurulum.tr.md) · [English setup](docs/setup.en.md)
 
-![xmeye-wrapper NVR düzeni web arayüzü — 16 kanal grid, PTZ/kalite kontrolcü, senkron zaman çizgisi](docs/screenshot.png)
+![16 kanal grid görünümü — PTZ/kalite kontrolcü ve senkron zaman çizgisi](docs/assets/grid16.png)
+
+<table>
+<tr>
+<td><img src="docs/assets/single.png" alt="Tekli kamera görünümü"></td>
+<td><img src="docs/assets/grid4.png" alt="4 kanal grid"></td>
+</tr>
+<tr>
+<td><img src="docs/assets/grid9.png" alt="9 kanal grid"></td>
+<td><img src="docs/assets/grid16.png" alt="16 kanal grid"></td>
+</tr>
+</table>
+
+> **Canlı örnek:** İsahocalılar köyü kameraları — <https://isahocalilar.com/?page_id=1326>
+
+## Denemek için (örnek cihaz)
+
+Kendi kameran yoksa, aşağıdaki örnek cihaz bilgileriyle `.env` oluşturup köprüyü deneyebilirsin:
+
+```bash
+XMEYE_NAME=tbdc
+XMEYE_SERIAL=22e40425f2fc5906shc6
+XMEYE_USER=koy1
+XMEYE_PASS=admin123.
+XMEYE_CHANNELS=16
+```
 
 ---
 
