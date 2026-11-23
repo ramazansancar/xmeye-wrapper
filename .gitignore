@@ -12,6 +12,8 @@ core-go/testdata/
 # yerel config (cihaz kimlik bilgileri)
 config.json
 *.local.json
+.env
+!.env.example
 
 # Python
 __pycache__/
