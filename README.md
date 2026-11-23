@@ -8,6 +8,8 @@ Sadece bulut **seri no + kullanıcı/şifre** ile çalışır — yerel ağ (LAN
 
 **Diller / Languages:** [Türkçe kurulum](docs/kurulum.tr.md) · [English setup](docs/setup.en.md)
 
+![xmeye-wrapper NVR düzeni web arayüzü — 16 kanal grid, PTZ/kalite kontrolcü, senkron zaman çizgisi](docs/screenshot.png)
+
 ---
 
 ## Neden?
