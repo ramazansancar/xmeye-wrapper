@@ -174,13 +174,15 @@ func readVideo(ctx context.Context, s *Stream, onFrame func(nal []byte)) error {
 			msgID := binary.LittleEndian.Uint16(acc[14:16])
 			body := acc[dvrip.HeaderLen:total]
 			if msgID == dvrip.MsgOPMonitorData || msgID == 1422 { // 1412 canlı, 1422 playback
-				// XM I-frame (FC) marker = yeni GOP başı. Önceki biriken frame'leri burada flush et
-				// (bölünmüş XM frame'ler birleşmiş olur), sonra yeni frame'i biriktir.
-				if len(body) >= 4 && body[0] == 0 && body[1] == 0 && body[2] == 1 && body[3] == 0xFC {
+				// Her XM frame marker'ı (00 00 01 FX) = yeni frame başı. I (FC) VE P (F0/F1/FA...)
+				// dahil her marker'da önceki frame'i flush et → her frame ayrı onFrame (düşük gecikme,
+				// atlamasız oynatma). F9=audio flush tetiklemez (video frame değil).
+				if len(body) >= 4 && body[0] == 0 && body[1] == 0 && body[2] == 1 &&
+					body[3] >= 0xF0 && body[3] != 0xF9 {
 					flush()
 				}
 				frameBuf = append(frameBuf, body...)
-				if len(frameBuf) > 262144 { // emniyet: aşırı birikmeyi önle
+				if len(frameBuf) > 2_000_000 { // emniyet: aşırı birikmeyi önle
 					flush()
 				}
 			}
