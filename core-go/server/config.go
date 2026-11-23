@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 )
 
 // Config, köprü sunucunun çalışma ayarları.
@@ -43,6 +44,11 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if v := os.Getenv("XMEYE_NAME"); v != "" {
 		c.Device.Name = v
+	}
+	if v := os.Getenv("XMEYE_CHANNELS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.Device.Channels = n
+		}
 	}
 	if c.Device.Channels == 0 {
 		c.Device.Channels = 1
