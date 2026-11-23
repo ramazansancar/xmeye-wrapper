@@ -1,10 +1,14 @@
-# xmeye-wrapper — tek komutla host: docker compose up -d
-# Cihaz bilgilerini .env dosyasına ya da buraya yaz.
+# xmeye-wrapper — tek komutla: docker compose up -d --build
+# Cihaz bilgileri .env dosyasından okunur (bkz. .env.example).
 #
-# ÖNEMLİ: Bulut bağlantısı UDP NAT-traversal (P2P) kullanır. Docker'ın varsayılan bridge ağı
-# UDP NAT'ı bozar → bağlantı kurulamaz. Bu yüzden HOST ağı kullanılır (network_mode: host).
-# Linux sunucuda sorunsuz çalışır. (Windows/Mac Docker Desktop'ta host ağı kısıtlıdır; orada
-# köprüyü doğrudan `go run ./server` ile çalıştırın. Asıl dağıtım hedefi Linux sunucu.)
+# ÖNEMLİ: Bulut bağlantısı UDP NAT-traversal (P2P) kullanır. Docker bridge ağı giden UDP'nin
+# dönüş portunu değiştirir → NAT delme bozulur → video gelmez. Bu yüzden HOST ağı şarttır
+# (network_mode: host). Host ağında port publish edilmez; sunucu doğrudan host:8080'i dinler.
+#
+# Linux sunucu: host ağı yerel → sorunsuz.
+# Windows/Mac Docker Desktop (29+): host ağı WSL2 üzerinden desteklenir
+#   (Settings > Resources > Network > "Enable host networking" açık olmalı).
+#   Açık değilse UDP NAT bozulur (arayüz açılır, video gelmez) → ya ayarı aç ya `go run ./server`.
 services:
   wrapper:
     build:
@@ -13,14 +17,11 @@ services:
     image: xmeye-wrapper:latest
     container_name: xmeye-wrapper
     restart: unless-stopped
-    # Linux sunucuda host ağını açın (UDP NAT için şart):
-    #   network_mode: host
-    # Windows/Mac Docker Desktop host ağını desteklemez → orada bridge + port map (arayüz çalışır,
-    # ama UDP NAT-traversal bozulur, video gelmez). Windows'ta geliştirme için `go run ./server` kullanın.
-    ports:
-      - "8080:8080"
+    network_mode: host          # UDP NAT-traversal için ŞART (port map ile çalışmaz)
+    env_file:
+      - .env
     environment:
-      XMEYE_ADDR: ":8080"
+      XMEYE_ADDR: ":8080"       # host ağında doğrudan host:8080 dinlenir
       XMEYE_NAME: "${XMEYE_NAME:-camera}"
       XMEYE_SERIAL: "${XMEYE_SERIAL:-}"
       XMEYE_USER: "${XMEYE_USER:-}"
