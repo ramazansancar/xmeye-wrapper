@@ -2,20 +2,20 @@
 
 xmeye-wrapper'ı kendi sunucunda çalıştırıp XMEye kameralarını tarayıcıdan izlemek için.
 
-> Not: Proje erken geliştirme aşamasında. Bulut login/token akışı tamamlanınca kurulum tek adıma inecek;
-> şu an token/relay bilgisi elle veriliyor.
-
 ## Gereksinimler
 
 - **Go 1.23+** (kaynaktan çalıştırmak için) **veya** Docker (hazır çalıştırma).
-- Linux, Windows ya da macOS sunucu. Küçük bir VPS / Raspberry Pi yeter.
+- Linux, Windows ya da macOS. Küçük bir VPS / Raspberry Pi yeter.
 - Kamera **seri numarası (Cloud ID)**, **kullanıcı adı** ve **şifresi**.
+- Tarayıcı: **Chrome / Edge 107+** veya **Safari 17+** (WebCodecs + H.265/HEVC donanım çözümü için).
 
 ## 1. Kaynaktan çalıştırma
 
 ```bash
 git clone <repo>
-cd xmeye-wrapper/core-go
+cd xmeye-wrapper
+cp .env.example .env        # değerleri doldur (seri no, kullanıcı, şifre)
+cd core-go
 go run ./server
 ```
 
@@ -23,56 +23,43 @@ Sunucu `http://localhost:8080` adresinde açılır. Tarayıcıdan gir.
 
 ### Ayarlar
 
-İki yol: ortam değişkenleri **veya** `core-go/config.json`.
-
-Ortam değişkenleri:
+`.env` (proje kökünde) ya da ortam değişkenleri:
 
 ```bash
-export XMEYE_NAME=tbdc              # cihaz adı (görünen)
-export XMEYE_SERIAL=22e4...shc6     # seri no (Cloud ID)
-export XMEYE_USER=koy1              # kullanıcı adı
-export XMEYE_PASS=******            # şifre
-export XMEYE_RELAY=101.44.x.x:8088  # bulut relay (geçici; ileride otomatik)
-export XMEYE_TOKEN=<download-token> # erişim token'ı (geçici; ileride otomatik)
-export XMEYE_SESSION=<oturum-hex>   # oturum (geçici)
-export XMEYE_ADDR=:8080             # dinleme adresi
-go run ./server
+XMEYE_NAME=camera          # cihaz adı (arayüzde görünür)
+XMEYE_SERIAL=<seri-no>     # seri no (Cloud ID)
+XMEYE_USER=<kullanıcı>     # kullanıcı adı
+XMEYE_PASS=<şifre>         # şifre
+XMEYE_CHANNELS=16          # kanal sayısı
+XMEYE_ADDR=:8080           # dinleme adresi (opsiyonel)
 ```
 
-`config.json` örneği (`core-go/` içinde):
-
-```json
-{
-  "addr": ":8080",
-  "device": {
-    "name": "tbdc",
-    "serial": "22e4...shc6",
-    "username": "koy1",
-    "password": "******",
-    "channels": 16
-  }
-}
-```
-
-> Güvenlik: `config.json` kamera şifresi içerir, `.gitignore`'dadır — paylaşma.
+> Güvenlik: `.env` kamera şifresi içerir, `.gitignore`'dadır — paylaşma.
+> Relay/token elle verilmez; köprü bulut bağlantısını (NAT traversal) kendisi kurar.
 
 ## 2. Docker ile çalıştırma
 
 ```bash
 cd xmeye-wrapper
-docker compose up -d
+cp .env.example .env        # değerleri doldur
+docker compose up -d --build
 ```
 
-(Docker dosyaları `docker/` altında; ayarlar `docker-compose.yml` içindeki ortam değişkenleriyle.)
+**Önemli — ağ:** Bulut bağlantısı UDP NAT-traversal (P2P) kullanır; Docker bridge ağı bunu bozar.
+Bu yüzden compose **host ağı** (`network_mode: host`) kullanır.
+
+- **Linux sunucu:** host ağı yerel → sorunsuz çalışır. Önerilen dağıtım hedefi.
+- **Windows / macOS Docker Desktop:** host ağı WSL2/VM içinde kalır, tarayıcı `localhost:8080`'e
+  erişemez. Bu platformlarda köprüyü doğrudan `go run ./server` ile çalıştır.
 
 ## 3. Köy / WordPress sitesine gömme
 
-Köprü çalışırken, sitene tek bir PHP dosyası (`clients/php/`) koyarak izleyiciyi gömebilirsin.
-Üstteki küçük config alanına köprü adresini (örn `http://sunucu:8080`) yazman yeterli. Ayrıntı:
-`clients/php/README` (hazırlanıyor).
+Köprü çalışırken, sitene tek bir PHP dosyası (`clients/php/`) koyarak izleyiciyi `<iframe>` ile
+gömebilirsin. Config alanına köprü adresini (örn `http://sunucu:8080`) yaz.
 
 ## Sık sorunlar
 
-- **"token/relay ayarlı değil":** `XMEYE_TOKEN` ve `XMEYE_RELAY` verilmemiş. (Bu adım otomatikleşene kadar elle gerekli.)
-- **Segment 404:** token süresi dolmuş ya da yanlış. Taze token gerekir.
-- **Video gelmiyor:** cihazın internete bağlı ve bulut (P2P/RPS) açık olduğundan emin ol.
+- **Görüntü siyah / "bağlanıyor" takılı:** cihaz internete bağlı ve bulut (P2P/RPS) açık olmalı.
+  Çok kanal aynı anda açılınca ilk yükleme gecikebilir (NAT; her kanal ayrı bağlantı açar).
+- **Görüntü gelmiyor, tarayıcı eski:** H.265/HEVC için Chrome/Edge 107+ veya Safari 17+ gerekir.
+- **Docker'da UI açılmıyor (Windows):** host ağı sınırı — `go run ./server` kullan (bkz. bölüm 2).
