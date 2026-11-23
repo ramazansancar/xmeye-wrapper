@@ -1,0 +1,20 @@
+# pcap / yakalanmış trafik (gizli: seri no, token, kamera verisi) — commit edilmez
+core-go/testdata/
+*.pcap
+
+# Go derleme çıktıları
+*.exe
+*.test
+*.out
+/core-go/server/server
+/core-go/xmeye-wrapper
+
+# yerel config (cihaz kimlik bilgileri)
+config.json
+*.local.json
+
+# editör / işletim sistemi
+.DS_Store
+.idea/
+.vscode/
+*~
