@@ -1,0 +1,10 @@
+{
+  "name": "xmeye-wrapper-client",
+  "version": "0.0.1",
+  "description": "XMEye DVRIP protokol — Node.js portu (xmeye-wrapper)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "license": "UNLICENSED"
+}
