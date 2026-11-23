@@ -1,0 +1,22 @@
+# xmeye-wrapper — tek komutla host: docker compose up -d
+# Cihaz bilgilerini .env dosyasına ya da buraya yaz.
+services:
+  wrapper:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: xmeye-wrapper:latest
+    container_name: xmeye-wrapper
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      XMEYE_ADDR: ":8080"
+      XMEYE_NAME: "${XMEYE_NAME:-camera}"
+      XMEYE_SERIAL: "${XMEYE_SERIAL:-}"
+      XMEYE_USER: "${XMEYE_USER:-}"
+      XMEYE_PASS: "${XMEYE_PASS:-}"
+      # geçici (bulut login otomatikleşene kadar):
+      XMEYE_RELAY: "${XMEYE_RELAY:-}"
+      XMEYE_TOKEN: "${XMEYE_TOKEN:-}"
+      XMEYE_SESSION: "${XMEYE_SESSION:-}"

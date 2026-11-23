@@ -1,0 +1,12 @@
+.git
+testdata
+core-go/testdata
+*.pcap
+*.exe
+*.test
+config.json
+*.local.json
+clients
+docs
+.vscode
+.idea
