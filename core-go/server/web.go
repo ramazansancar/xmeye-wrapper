@@ -28,25 +28,31 @@ header .meta{color:#5a636c;font-size:12px}
 /* orta: ana ekran + sag panel */
 .mid{flex:1 1 auto;display:flex;min-height:0}
 .stage{flex:1 1 auto;position:relative;background:#000;min-width:0;min-height:0}
-.stage>video,.stage>canvas.main{width:100%;height:100%;object-fit:contain;background:#000;display:block}
+.stage>video,.stage>canvas{width:100%;height:100%;object-fit:contain;background:#000;display:block}
 .stage .bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
   padding:4px 8px;background:#fff;border-bottom:1px solid #b4bbc1;font-size:13px}
 .stage .bar .n{font-weight:600}
 .stage .bar .s{color:#5a636c}
 .stage .bar .s.err{color:#b00020}
 .stage .bar .s.live{color:#0a7d2c}
-/* yukleme gostergesi (video gelene kadar). Tek dis-cizgi spinner (hafif donus). */
-.load{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;color:#cfd4d9;background:#000;font-size:13px;z-index:2}
-.load.err{color:#e57373}
-.load .sp{width:34px;height:34px;border:3px solid #3a4046;border-top-color:#cfd4d9;border-radius:50%;
-  animation:spin 0.8s linear infinite}
-.load.err .sp{display:none}
+/* yukleme gostergesi (video gelene kadar). Stage'i kaplar, spinner+metin tam ortada. */
+.stage>.load{position:absolute;top:26px;left:0;right:0;bottom:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:#cfd4d9;background:#000;font-size:13px;z-index:3}
+.stage>.load.err{color:#e57373}
+.stage>.load .spin{width:38px;height:38px;border:3px solid #333a40;border-top-color:#cfd4d9;
+  border-radius:50%;animation:spin 0.8s linear infinite}
+.stage>.load.err .spin{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* grid hücre yükleme göstergesi */
+.gc .load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:#000;color:#cfd4d9;font-size:12px;z-index:2}
+.gc .load .spin{width:26px;height:26px;border:3px solid #333a40;border-top-color:#cfd4d9;
+  border-radius:50%;animation:spin 0.8s linear infinite}
 
 /* sag kontrolcu */
-.ctrl{flex:0 0 190px;background:#f6f7f8;border-left:1px solid #b4bbc1;
-  overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:10px}
+.ctrl{flex:0 0 230px;background:#f6f7f8;border-left:1px solid #b4bbc1;
+  overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
 .ctrl h3{margin:0 0 4px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#5a636c;font-weight:600}
 .grp{border:1px solid #c3c8cd;background:#fff;padding:7px}
 .ptz{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
@@ -80,8 +86,9 @@ header .meta{color:#5a636c;font-size:12px}
 .go{font:13px system-ui;padding:5px 12px;background:#fff;color:#14181c;border:1px solid #b4bbc1;cursor:pointer}
 
 /* grid modu: stage icinde cok kamera */
-.stage.grid>video,.stage.grid>canvas.main,.stage.grid>#mainLoad{display:none!important}
+.stage.grid>video,.stage.grid>canvas,.stage.grid>.load,.stage.grid>.bar{display:none!important}
 .stage .gwrap{display:none;position:absolute;inset:26px 0 0 0}
+.stage.grid .gwrap{inset:0}
 .stage.grid .gwrap{display:grid;gap:3px;padding:3px}
 .stage .gwrap .gc{position:relative;background:#000;border:1px solid #2a2f35;min-height:0;overflow:hidden}
 .stage .gwrap .gc video,.stage .gwrap .gc canvas{width:100%;height:100%;object-fit:contain;background:#000;display:block}
@@ -136,7 +143,7 @@ header .meta{color:#5a636c;font-size:12px}
   <div class="stage" id="stage">
     <video id="main" muted playsinline autoplay></video>
     <div class="gwrap" id="gwrap"></div>
-    <div class="load" id="mainLoad"><div class="sp"></div><span id="mainLoadTxt">Bağlanıyor…</span></div>
+    <div class="load" id="mainLoad"><div class="spin"></div><span id="mainLoadTxt">Bağlanıyor…</span></div>
     <div class="bar"><span class="n" id="mainName">—</span><span class="s" id="mainState">—</span></div>
   </div>
 
@@ -163,8 +170,8 @@ header .meta{color:#5a636c;font-size:12px}
     <div class="grp seg">
       <h3>Akis Kalitesi</h3>
       <div class="row" id="qual">
-        <button class="wide on" data-stream="0">HD</button>
-        <button class="wide" data-stream="1">SD</button>
+        <button class="wide on" data-stream="1">SD</button>
+        <button class="wide" data-stream="0">HD</button>
       </div>
     </div>
 
@@ -193,7 +200,7 @@ header .meta{color:#5a636c;font-size:12px}
   </div>
 </div>
 
-<div class="strip" id="strip"></div>
+<div class="strip" id="strip" hidden></div>
 
 <div class="tl" id="tl">
   <div class="tlhead">
@@ -222,7 +229,7 @@ var players={};      // kanal -> {ws, jmuxer} (thumbnail)
 var gplayers={};     // kanal -> {ws, jmuxer} (grid modu)
 var mainHls=null;    // ana ekran {ws, jmuxer}
 var active=0;        // ana ekrandaki kanal
-var stream=0;        // 0=ana,1=alt
+var stream=1;        // 0=ana(HD),1=alt(SD). Varsayılan SD (düşük bant, çok kanal grid için ideal).
 var layout=1;        // 1=tekli (ana ekran+kontrol), 4/9/16=grid
 // DVRIP komut seti (cihazdan toplanan + standart). Backend /api/cmd isleyecek.
 var CMDS=[
@@ -258,7 +265,8 @@ function hubConnect(){
     var b=new Uint8Array(ev.data); if(b.length<2) return;
     var ch=b[0]; var s=hub.subs[ch]; if(!s) return;
     s.push(b.subarray(1));
-    if(!s.live){ s.live=true; if(s.onLive) s.onLive(); }
+    // onLive artık ilk GERÇEK çizilen frame'de tetiklenir (makeWcPlayer onFirstFrame),
+    // veri gelir gelmez değil → spinner ancak görüntü gelince kapanır.
   };
   hub.ws.onclose=function(){ hub.ready=false;
     for(var ch in hub.subs){ if(hub.subs[ch].onErr) hub.subs[ch].onErr(); } };
@@ -306,9 +314,9 @@ function detectCodec(buf){
 
 // WebCodecs HEVC/H264 decoder + canvas render. jmuxer yok (HEVC desteklemez).
 // Dönüş: {push(bytes), destroy()}.
-function makeWcPlayer(canvas,kind,onErr){
+function makeWcPlayer(canvas,kind,onErr,onFirstFrame){
   var ctx=canvas.getContext('2d');
-  var dec=null, configured=false, started=false;
+  var dec=null, configured=false, started=false, drew=false;
   var sps=null,pps=null,vps=null;    // parametre setleri (key frame'e önek olarak gerekebilir)
   var tsCounter=0;
 
@@ -317,6 +325,7 @@ function makeWcPlayer(canvas,kind,onErr){
       if(canvas.width!==frame.displayWidth) canvas.width=frame.displayWidth;
       if(canvas.height!==frame.displayHeight) canvas.height=frame.displayHeight;
       ctx.drawImage(frame,0,0,canvas.width,canvas.height);
+      if(!drew){ drew=true; if(onFirstFrame) onFirstFrame(); } // gerçek görüntü çizildi
     }catch(e){}
     frame.close();
   }
@@ -398,36 +407,64 @@ function makeWcPlayer(canvas,kind,onErr){
 }
 
 // attachVideo: kanalı tek-WS hub'a abone eder. İlk paketten codec tespit → WebCodecs decoder.
-// video elementini gizler, yanına canvas koyar (WebCodecs canvas'a çizer). {destroy} döner.
+// Kanal ZATEN açıksa (hub.subs[ch]) aynı canvas'ı yeni DOM hücresine TAŞIR; play/decoder'ı
+// KORUR (layout geçişinde 0'dan yüklenmez). Yeni callback'leri bağlar. {destroy} döner.
 function attachVideo(video,ch,strm,onLive,onErr){
   hubConnect();
-  if(hub.subs[ch]){ try{hub.subs[ch].destroy();}catch(e){} delete hub.subs[ch]; }
   if(!('VideoDecoder' in window)){ if(onErr) onErr(); return null; }
-  // canvas hazırla (video'nun yerine)
   var parent=video.parentNode;
-  var cv=video._wcCanvas;
-  if(!cv){ cv=document.createElement('canvas'); cv.style.width='100%'; cv.style.height='100%';
-    cv.style.objectFit=video.style.objectFit||getComputedStyle(video).objectFit||'contain';
-    cv.style.background='#000'; cv.style.display='block';
-    video._wcCanvas=cv; }
+  var existing=hub.subs[ch];
+  // stream aynıysa ve zaten açıksa → canvas'ı taşı, play tekrar gönderme
+  if(existing && existing.stream===strm){
+    var cv0=existing.cv;
+    video.style.display='none';
+    if(cv0.parentNode!==parent) parent.appendChild(cv0);
+    cv0.style.display='block';
+    existing.video=video; existing.onLive=onLive; existing.onErr=onErr;
+    if(existing.live && onLive) onLive();   // zaten canlıysa hemen bildir (spinner kapanır)
+    return {destroy:existing.destroy};
+  }
+  // stream değişti ya da yeni. Eski varsa: backend aboneliğini durdur ama ESKİ CANVAS'ı
+  // ekranda TUT (yeni ilk frame gelene kadar) → SD/HD geçişinde siyah flash yok.
+  var oldCanvas=null;
+  if(existing){
+    hubSend({type:'stop',ch:ch});
+    try{ if(existing.player) existing.player.destroy(); }catch(e){}
+    oldCanvas=existing.cv;            // DOM'da bırak, yeni frame'de kaldırılacak
+    existing._replaced=true;
+  }
+
+  var cv=document.createElement('canvas');
+  cv.style.width='100%'; cv.style.height='100%';
+  cv.style.objectFit='contain'; cv.style.display='block';
+  if(oldCanvas){ // geçiş: yeni canvas eskinin üstünde overlay, transparan (eski görünür)
+    cv.style.position='absolute'; cv.style.inset='0'; cv.style.background='transparent'; cv.style.zIndex='1';
+  } else { cv.style.background='#000'; }
   video.style.display='none';
-  if(cv.parentNode!==parent){ parent.appendChild(cv); }
-  cv.style.display='block';
+  parent.appendChild(cv);
 
   var player=null, codec=null;
   var sub={
-    live:false,onLive:onLive,onErr:onErr,
+    live:false,stream:strm,cv:cv,video:video,onLive:onLive,onErr:onErr,player:null,
     push:function(bytes){
-      if(!player){
+      if(!sub.player){
         codec=detectCodec(bytes); if(!codec) return;
-        player=makeWcPlayer(cv,codec,function(){ if(onErr)onErr(); });
+        sub.player=makeWcPlayer(cv,codec,
+          function(){ if(sub.onErr)sub.onErr(); },
+          function(){ // ilk gerçek frame çizildi → eskiyi kaldır, overlay'i normale al
+            cv.style.background='#000'; cv.style.position=''; cv.style.inset=''; cv.style.zIndex='';
+            if(oldCanvas&&oldCanvas.parentNode){ oldCanvas.parentNode.removeChild(oldCanvas); oldCanvas=null; }
+            sub.live=true; if(sub.onLive)sub.onLive();
+          });
       }
-      player.push(bytes);
+      sub.player.push(bytes);
     },
     destroy:function(){ hubSend({type:'stop',ch:ch});
-      if(player){ try{player.destroy();}catch(e){} }
-      if(cv){ cv.style.display='none'; } video.style.display='';
-      if(hub.subs[ch]) delete hub.subs[ch]; }
+      if(sub.player){ try{sub.player.destroy();}catch(e){} }
+      if(cv&&cv.parentNode) cv.parentNode.removeChild(cv);
+      if(oldCanvas&&oldCanvas.parentNode) oldCanvas.parentNode.removeChild(oldCanvas);
+      if(sub.video) sub.video.style.display='';
+      if(hub.subs[ch]===sub) delete hub.subs[ch]; }
   };
   hub.subs[ch]=sub;
   hubSend({type:'play',ch:ch,stream:strm});
@@ -467,14 +504,20 @@ function setLoad(show,err,txt){
   var t=document.getElementById('mainLoadTxt'); if(t&&txt) t.textContent=txt;
 }
 function setActive(ch){
+  var prev=active;
   active=ch;
+  // başka kanala geçiş → eski kanalı kapat (aynı kanal/stream değişimi attachVideo'da yönetilir)
+  if(prev!==ch && hub.subs[prev]){ try{hub.subs[prev].destroy();}catch(e){} }
   var th=document.querySelectorAll('.thumb');
   for(var i=0;i<th.length;i++) th[i].className='thumb'+(i===ch?' on':'');
   document.getElementById('mainName').textContent='CAM'+String(ch+1).padStart(2,'0');
   var mv=document.getElementById('main'), st=document.getElementById('mainState');
   st.className='s'; st.textContent='baglaniyor';
-  setLoad(true,false,'Bağlanıyor…');
-  if(mainHls){ try{mainHls.destroy();}catch(e){} }
+  // eski görüntü varsa (stream değişimi / aynı kanal) spinner gösterme → siyah flash yok
+  var keepOld = hub.subs[ch] && hub.subs[ch].live;
+  if(!keepOld) setLoad(true,false,'Bağlanıyor…');
+  // NOT: eski sub'ı burada destroy ETME → attachVideo içinde eski canvas yeni frame'e kadar
+  // tutulur (SD/HD geçişinde siyah flash yok). Başka kanala geçiş yukarıda prev ile kapatıldı.
   mainHls=attachVideo(mv,ch,stream,
     function(){ st.className='s live'; st.textContent='canli'; setLoad(false); },
     function(){ st.className='s err'; st.textContent='hata'; setLoad(true,true,'Bağlantı hatası — yeniden deneniyor…'); });
@@ -498,19 +541,30 @@ function sendSelCmd(){ var id=parseInt(document.getElementById('cmdSel').value,1
   api('/api/cmd',{channel:active,type:'raw',cmdId:id}); }
 
 // --- duzen (tekli vs grid) ---
+// Performans: layout geçişinde açık kanalları KORU. attachVideo idempotent (canvas taşır),
+// setLayout sadece artık görünmeyen kanalları kapatır → mevcut akışlar 0'dan yüklenmez.
 function setLayout(n){
   layout=n;
   var bs=document.querySelectorAll('#layout button');
   for(var i=0;i<bs.length;i++) bs[i].className=(parseInt(bs[i].getAttribute('data-n'),10)===n?'on':'');
   var stage=document.getElementById('stage');
-  // grid instancelari temizle
-  for(var k in gplayers){ try{gplayers[k].destroy();}catch(e){} } gplayers={};
+
+  // hedef görünür kanal kümesi
+  var want={};
+  if(n===1){ want[active]=true; } else {
+    var cnt=Math.min(n, info.channels||n);
+    for(var k=0;k<cnt;k++) want[k]=true;
+  }
+  // artık görünmeyen açık kanalları durdur (NAT'ı boşalt)
+  for(var ch in hub.subs){ if(!want[ch]){ try{hub.subs[ch].destroy();}catch(e){} } }
+  gplayers={};
+
   if(n===1){
     stage.className='stage';
+    document.getElementById('gwrap').innerHTML='';
     setActive(active);
   } else {
     stage.className='stage grid';
-    if(mainHls){ try{mainHls.destroy();}catch(e){} mainHls=null; }
     buildGrid(n);
   }
 }
@@ -526,12 +580,18 @@ function buildGrid(n){
     (function(ch){
       var c=document.createElement('div'); c.className='gc';
       var v=document.createElement('video'); v.id='gv'+ch; v.muted=true; v.playsInline=true; v.autoplay=true;
+      var ld=document.createElement('div'); ld.className='load'; ld.innerHTML='<div class="spin"></div>';
       var l=document.createElement('div'); l.className='gl'; l.textContent='CAM'+String(ch+1).padStart(2,'0');
-      c.appendChild(v); c.appendChild(l);
+      c.appendChild(v); c.appendChild(ld); c.appendChild(l);
       c.onclick=function(){ setLayout(1); setActive(ch); };
       c.ondblclick=function(){ fsEl(c); };
       gw.appendChild(c);
-      gplayers[ch]=attachVideo(v,ch,stream,null,null);
+      var hideLd=function(){ if(ld) ld.hidden=true; };
+      var showLd=function(){ if(ld){ ld.hidden=false; } }; // hata/bekleme → spinner geri
+      // kanal zaten canlıysa spinner'ı hemen gizle (layout geçişinde korunan akış)
+      if(hub.subs[ch] && hub.subs[ch].live) hideLd();
+      // attachVideo idempotent: ch zaten açıksa canvas'ı bu hücreye taşır, play tekrar YOK.
+      gplayers[ch]=attachVideo(v,ch,stream,hideLd,showLd);
     })(k);
   }
 }
