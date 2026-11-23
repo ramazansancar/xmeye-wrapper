@@ -205,9 +205,9 @@ header .meta{color:#5a636c;font-size:12px}
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17"></script>
-<script src="https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js"></script>
 <script>
+// Video decode: WebCodecs VideoDecoder (H.264 + H.265/HEVC) → canvas.
+// HEVC desteği: Chrome/Edge 107+ (donanım), Safari 17+. jmuxer kullanılmıyor (HEVC yok).
 var info={name:'',serial:'',channels:1};
 var players={};      // kanal -> {ws, jmuxer} (thumbnail)
 var gplayers={};     // kanal -> {ws, jmuxer} (grid modu)
@@ -248,8 +248,8 @@ function hubConnect(){
   hub.ws.onmessage=function(ev){
     var b=new Uint8Array(ev.data); if(b.length<2) return;
     var ch=b[0]; var s=hub.subs[ch]; if(!s) return;
-    try{ s.jmuxer.feed({video:b.subarray(1)});
-      if(!s.live){ s.live=true; if(s.onLive) s.onLive(); } }catch(e){}
+    s.push(b.subarray(1));
+    if(!s.live){ s.live=true; if(s.onLive) s.onLive(); }
   };
   hub.ws.onclose=function(){ hub.ready=false;
     for(var ch in hub.subs){ if(hub.subs[ch].onErr) hub.subs[ch].onErr(); } };
@@ -258,30 +258,171 @@ function hubConnect(){
 function hubSend(obj){ var m=JSON.stringify(obj);
   if(hub.ready && hub.ws.readyState===1) hub.ws.send(m); else hub.queue.push(m); }
 
-// attachVideo: kanalı tek-WS hub'a abone eder, jmuxer+MSE ile video'ya oynatır. {destroy} döner.
+// --- Annex-B NAL ayırıcı + codec tespiti ---
+// Akış [00 00 00 01 | 00 00 01] start code'lu NAL'lar. Erişim birimi (AU) sınırı:
+// yeni VCL slice'ın first_slice flag'i ile; basitlik için VPS/SPS/IDR başı AU başı sayılır.
+function splitNALs(buf){ // Uint8Array -> [{start,end}] (start code dahil)
+  var n=buf.length, idx=[], i=0;
+  while(i+3<n){
+    if(buf[i]===0&&buf[i+1]===0&&buf[i+2]===1){ idx.push(i); i+=3; }
+    else if(buf[i]===0&&buf[i+1]===0&&buf[i+2]===0&&buf[i+3]===1){ idx.push(i); i+=4; }
+    else i++;
+  }
+  var out=[];
+  for(var k=0;k<idx.length;k++){ out.push({s:idx[k],e:(k+1<idx.length)?idx[k+1]:n}); }
+  return out;
+}
+function nalHeaderByte(buf,s){ // start code sonrası ilk byte
+  var p=(buf[s+2]===1)?s+3:s+4; return buf[p];
+}
+// HEVC: type=(b>>1)&0x3F  | H264: type=b&0x1F
+function nalTypeHEVC(b){ return (b>>1)&0x3F; }
+function nalTypeH264(b){ return b&0x1F; }
+
+// detectCodec: ilk paketten HEVC mi H264 mü. hevc: 'hevc', h264: 'h264'.
+function detectCodec(buf){
+  var nals=splitNALs(buf);
+  for(var k=0;k<nals.length;k++){
+    var b=nalHeaderByte(buf,nals[k].s);
+    // HEVC VPS(32)/SPS(33)/PPS(34), forbidden_zero(bit7)=0
+    if((b&0x80)===0){
+      var hv=nalTypeHEVC(b);
+      if(hv===32||hv===33||hv===34||(hv>=16&&hv<=21)) return 'hevc';
+      var h2=nalTypeH264(b);
+      if(h2===7||h2===8||h2===5||h2===1) return 'h264';
+    }
+  }
+  return null;
+}
+
+// WebCodecs HEVC/H264 decoder + canvas render. jmuxer yok (HEVC desteklemez).
+// Dönüş: {push(bytes), destroy()}.
+function makeWcPlayer(canvas,kind,onErr){
+  var ctx=canvas.getContext('2d');
+  var dec=null, configured=false, started=false;
+  var sps=null,pps=null,vps=null;    // parametre setleri (key frame'e önek olarak gerekebilir)
+  var tsCounter=0;
+
+  function draw(frame){
+    try{
+      if(canvas.width!==frame.displayWidth) canvas.width=frame.displayWidth;
+      if(canvas.height!==frame.displayHeight) canvas.height=frame.displayHeight;
+      ctx.drawImage(frame,0,0,canvas.width,canvas.height);
+    }catch(e){}
+    frame.close();
+  }
+  function mkDecoder(){
+    dec=new VideoDecoder({output:draw,error:function(e){
+      // decode hatası → decoder'ı sıfırla, sonraki key frame'den devam (akış kopmaz)
+      try{ if(dec&&dec.state!=='closed') dec.close(); }catch(_){}
+      dec=null; configured=false; started=false;
+    }});
+  }
+  // codec string adayları (tier/level kesin değil → birkaç dene)
+  function candidates(){
+    if(kind==='hevc') return ['hev1.1.6.L123.H0','hev1.1.6.L120.B0','hev1.1.6.L123.B0','hev1.1.6.L153.B0','hvc1.1.6.L123.B0'];
+    return ['avc1.640029','avc1.42E01E','avc1.4D4029'];
+  }
+  function tryConfigure(cb){
+    var cands=candidates(), i=0;
+    (function next(){
+      if(i>=cands.length){ if(onErr)onErr(); return; }
+      var c=cands[i++];
+      VideoDecoder.isConfigSupported({codec:c,optimizeForLatency:true}).then(function(r){
+        if(r.supported){ cb(c); } else next();
+      }).catch(next);
+    })();
+  }
+
+  // push: her WS mesajı ≈ bir tam frame (backend flush'ı her frame sınırında).
+  // İçindeki NAL'ları tara: codec için SPS/VPS/PPS sakla, key mi tespit et, configure et,
+  // sonra TÜM mesajı tek EncodedVideoChunk olarak decode et (param set + VCL birlikte, Annex-B).
+  function push(bytes){
+    var nals=splitNALs(bytes);
+    var isKey=false, hasVCL=false, hasParam=false;
+    for(var k=0;k<nals.length;k++){
+      var seg=bytes.subarray(nals[k].s,nals[k].e);
+      var b=nalHeaderByte(bytes,nals[k].s);
+      if(kind==='hevc'){
+        var t=nalTypeHEVC(b);
+        if(t===32)vps=seg.slice?seg.slice():new Uint8Array(seg);
+        else if(t===33)sps=seg.slice?seg.slice():new Uint8Array(seg);
+        else if(t===34)pps=seg.slice?seg.slice():new Uint8Array(seg);
+        if(t===32||t===33||t===34)hasParam=true;
+        if(t>=16&&t<=21)isKey=true;
+        if(t<=31)hasVCL=true;
+      }else{
+        var t2=nalTypeH264(b);
+        if(t2===7)sps=seg.slice?seg.slice():new Uint8Array(seg);
+        else if(t2===8)pps=seg.slice?seg.slice():new Uint8Array(seg);
+        if(t2===7||t2===8)hasParam=true;
+        if(t2===5)isKey=true;
+        if(t2>=1&&t2<=5)hasVCL=true;
+      }
+    }
+    // decoder'ı ilk SPS + key görünce configure et (async)
+    if(!configured && sps && isKey){
+      configured=true; mkDecoder();
+      tryConfigure(function(codec){ try{ dec.configure({codec:codec,optimizeForLatency:true}); }catch(e){} });
+    }
+    if(!dec || dec.state!=='configured') return;      // configure bitene kadar at
+    if(!hasVCL && !isKey) return;                      // sadece param set / audio → decode etme
+    if(!started){ if(!isKey) return; started=true; }   // akış KESİN key ile başlar
+    // key frame'de SPS/PPS/VPS yoksa önüne ekle (decoder her key'de param ister olabilir)
+    var data=bytes;
+    if(isKey && kind==='hevc' && vps && sps && pps){
+      var need = (data.length>=5 && (nalTypeHEVC(data[(data[2]===1)?3:4])===32)) ? false : true;
+      if(need){ data=concatU8([vps,sps,pps,bytes]); }
+    }else if(isKey && kind!=='hevc' && sps && pps){
+      var need2 = (data.length>=5 && (nalTypeH264(data[(data[2]===1)?3:4])===7)) ? false : true;
+      if(need2){ data=concatU8([sps,pps,bytes]); }
+    }
+    try{
+      dec.decode(new EncodedVideoChunk({ type:isKey?'key':'delta', timestamp:tsCounter, data:data }));
+      tsCounter+=1000000/25;
+    }catch(e){ /* error callback reset eder */ }
+  }
+  function concatU8(arr){ var n=0,i; for(i=0;i<arr.length;i++)n+=arr[i].length;
+    var o=new Uint8Array(n),p=0; for(i=0;i<arr.length;i++){o.set(arr[i],p);p+=arr[i].length;} return o; }
+  function destroy(){ try{ if(dec&&dec.state!=='closed') dec.close(); }catch(e){} dec=null; }
+  return {push:push,destroy:destroy};
+}
+
+// attachVideo: kanalı tek-WS hub'a abone eder. İlk paketten codec tespit → WebCodecs decoder.
+// video elementini gizler, yanına canvas koyar (WebCodecs canvas'a çizer). {destroy} döner.
 function attachVideo(video,ch,strm,onLive,onErr){
   hubConnect();
-  // önceki abonelik varsa temizle
-  if(hub.subs[ch]){ try{hub.subs[ch].jmuxer.destroy();}catch(e){} }
-  if(window.JMuxer && 'MediaSource' in window){
-    // flushingTime düşük = düşük gecikme. fps sabit vermiyoruz (değişken frame).
-    var jm=new JMuxer({node:video,mode:'video',flushingTime:50,maxDelay:500,clearBuffer:true,debug:false,
-      onReady:function(){ try{video.play();}catch(e){} },
-      onError:function(){ if(onErr) onErr(); }});
-    hub.subs[ch]={jmuxer:jm,onLive:onLive,onErr:onErr,live:false};
-    hubSend({type:'play',ch:ch,stream:strm});
-    return {destroy:function(){ hubSend({type:'stop',ch:ch});
-      if(hub.subs[ch]){ try{hub.subs[ch].jmuxer.destroy();}catch(e){} delete hub.subs[ch]; } }};
-  }
-  // fallback: HLS (REST alternatif, ayrı bağlantı)
-  if(window.Hls && Hls.isSupported()){
-    var h=new Hls({liveSyncDurationCount:3,maxBufferLength:10});
-    h.loadSource('/live/'+ch+'.m3u8'); h.attachMedia(video);
-    if(onLive) h.on(Hls.Events.FRAG_LOADED,onLive);
-    if(onErr) h.on(Hls.Events.ERROR,function(e,d){ if(d.fatal) onErr(); });
-    return {destroy:function(){ try{h.destroy();}catch(e){} }};
-  }
-  if(onErr) onErr(); return null;
+  if(hub.subs[ch]){ try{hub.subs[ch].destroy();}catch(e){} delete hub.subs[ch]; }
+  if(!('VideoDecoder' in window)){ if(onErr) onErr(); return null; }
+  // canvas hazırla (video'nun yerine)
+  var parent=video.parentNode;
+  var cv=video._wcCanvas;
+  if(!cv){ cv=document.createElement('canvas'); cv.style.width='100%'; cv.style.height='100%';
+    cv.style.objectFit=video.style.objectFit||getComputedStyle(video).objectFit||'contain';
+    cv.style.background='#000'; cv.style.display='block';
+    video._wcCanvas=cv; }
+  video.style.display='none';
+  if(cv.parentNode!==parent){ parent.appendChild(cv); }
+  cv.style.display='block';
+
+  var player=null, codec=null;
+  var sub={
+    live:false,onLive:onLive,onErr:onErr,
+    push:function(bytes){
+      if(!player){
+        codec=detectCodec(bytes); if(!codec) return;
+        player=makeWcPlayer(cv,codec,function(){ if(onErr)onErr(); });
+      }
+      player.push(bytes);
+    },
+    destroy:function(){ hubSend({type:'stop',ch:ch});
+      if(player){ try{player.destroy();}catch(e){} }
+      if(cv){ cv.style.display='none'; } video.style.display='';
+      if(hub.subs[ch]) delete hub.subs[ch]; }
+  };
+  hub.subs[ch]=sub;
+  hubSend({type:'play',ch:ch,stream:strm});
+  return {destroy:sub.destroy};
 }
 
 function buildStrip(){
